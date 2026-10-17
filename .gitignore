@@ -1,0 +1,12 @@
+# Dependencies
+/node_modules/
+
+# Angular
+/.angular/
+/dist/
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/
+*.log

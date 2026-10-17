@@ -1,0 +1,93 @@
+/* ==========================================================================
+   CSS Variables & Global Settings
+   ========================================================================== */
+:root {
+  /* Colors - Premium Dark Theme with Vibrant Neon Accents */
+  --bg-dark: #0f1115;
+  --bg-surface: #1a1d24;
+  --bg-surface-hover: #232730;
+  
+  --primary-accent: #6dd623;   /* Suplemental logo lime green */
+  --primary-hover: #7ee62e;
+  
+  --text-main: #ffffff;
+  --text-secondary: #9ba1a6;
+  
+  /* Typography */
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  /* Layout & Spacing */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --transition-speed: 0.3s;
+}
+
+/* ==========================================================================
+   Reset & Base
+   ========================================================================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  line-height: 1.5;
+  overflow-x: hidden;
+  position: relative;
+  min-height: 100vh;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 50% 50%, rgba(109, 214, 35, 0.04) 0%, transparent 40%),
+              radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.02) 0%, transparent 30%);
+  z-index: -1;
+  pointer-events: none;
+  animation: bgPulse 15s ease-in-out infinite alternate;
+}
+
+@keyframes bgPulse {
+  0% { transform: scale(1) translateY(0); }
+  100% { transform: scale(1.1) translateY(-2%); }
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f1115;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232730;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-accent);
+}
