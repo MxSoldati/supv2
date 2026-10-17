@@ -10,6 +10,10 @@ export class ProductService {
   private readonly STORAGE_PRODUCTS_KEY = 'suplemental_custom_products';
   private readonly STORAGE_SHEET_URL_KEY = 'suplemental_sheet_url';
   private readonly STORAGE_LAST_SYNC_KEY = 'suplemental_last_sync';
+  
+  // Endpoint en Hostinger y clave para autorizar guardados en el servidor
+  private readonly API_URL = '/api.php';
+  private readonly ADMIN_SECRET = 'supleadmin2026';
 
   // Signals
   products = signal<Product[]>(this.loadInitialProducts());
@@ -22,6 +26,11 @@ export class ProductService {
   syncSuccessMessage = signal<string | null>(null);
   lastSyncDate = signal<string | null>(this.loadInitialLastSync());
   savedSheetUrl = signal<string>(this.loadInitialSheetUrl());
+
+  constructor() {
+    // Apenas cualquier usuario entra a la web (celular o PC), busca el catálogo actualizado del servidor
+    this.fetchProductsFromServer();
+  }
 
   // Computed Filtered Products
   filteredProducts = computed(() => {
@@ -41,6 +50,55 @@ export class ProductService {
       return matchBrand && matchCategory && matchQuery;
     });
   });
+
+  /**
+   * Descarga los productos guardados en el servidor (productos.json a través de api.php)
+   */
+  async fetchProductsFromServer(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      // ?t=Date.now() evita que el navegador del celular use una respuesta vieja en caché
+      const response = await fetch(`${this.API_URL}?t=${Date.now()}`, {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+
+      if (!response.ok) return;
+
+      const serverProducts = await response.json();
+      if (Array.isArray(serverProducts) && serverProducts.length > 0) {
+        this.products.set(serverProducts);
+        localStorage.setItem(this.STORAGE_PRODUCTS_KEY, JSON.stringify(serverProducts));
+      }
+    } catch (e) {
+      // En localhost (ng serve) api.php no existe, por lo que usa localStorage sin romper nada
+      console.warn('Usando catálogo local (servidor PHP no detectado en entorno de desarrollo).');
+    }
+  }
+
+  /**
+   * Envía el catálogo modificado al servidor de Hostinger para que impacte en todos los dispositivos
+   */
+  private async saveProductsToServer(products: Product[]): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const response = await fetch(this.API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: this.ADMIN_SECRET,
+          products: products
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP ${response.status}`);
+      }
+    } catch (e) {
+      console.error('No se pudo guardar en el servidor remoto:', e);
+      this.syncError.set('Se guardó en tu navegador, pero hubo un error al publicar en el servidor.');
+    }
+  }
 
   private loadInitialProducts(): Product[] {
     if (typeof window === 'undefined') return DEFAULT_PRODUCTS;
@@ -84,11 +142,12 @@ export class ProductService {
     return this.products().find(p => p.id === id);
   }
 
-  // CRUD Methods
+  // CRUD Methods (Actualizan Signal + LocalStorage + Servidor Hostinger)
   saveAllProducts(products: Product[]): void {
     this.products.set(products);
     if (typeof window !== 'undefined') {
       localStorage.setItem(this.STORAGE_PRODUCTS_KEY, JSON.stringify(products));
+      this.saveProductsToServer(products);
     }
   }
 
@@ -114,6 +173,11 @@ export class ProductService {
   resetToDefault(): void {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(this.STORAGE_PRODUCTS_KEY);
+      fetch(this.API_URL, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: this.ADMIN_SECRET })
+      }).catch(e => console.error('Error al borrar productos.json en el servidor:', e));
     }
     this.products.set(DEFAULT_PRODUCTS);
   }
@@ -163,7 +227,7 @@ export class ProductService {
         localStorage.setItem(this.STORAGE_LAST_SYNC_KEY, now);
       }
 
-      this.syncSuccessMessage.set(`¡Catálogo sincronizado con éxito! (${importedProducts.length} productos actualizados).`);
+      this.syncSuccessMessage.set(`¡Catálogo sincronizado y publicado en el servidor con éxito! (${importedProducts.length} productos actualizados).`);
       this.isSyncing.set(false);
       return true;
     } catch (err: any) {
@@ -279,7 +343,6 @@ export class ProductService {
 
   // ==========================================
   // EXCEL (.xlsx) EXPORT & IMPORT
-  // Columns: Código | Categoría | Producto | Precio | Sabores | Marca | Imagen
   // ==========================================
 
   exportExcel(): void {
@@ -312,15 +375,14 @@ export class ProductService {
       header: ['Código', 'Categoría', 'Producto', 'Precio', 'Sabores', 'Marca', 'Imagen']
     });
 
-    // Auto-fit column widths
     const colWidths = [
-      { wch: 10 }, // Código
-      { wch: 15 }, // Categoría
-      { wch: 40 }, // Producto
-      { wch: 12 }, // Precio
-      { wch: 18 }, // Sabores
-      { wch: 18 }, // Marca
-      { wch: 35 }  // Imagen
+      { wch: 10 },
+      { wch: 15 },
+      { wch: 40 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 35 }
     ];
     worksheet['!cols'] = colWidths;
 
@@ -352,7 +414,6 @@ export class ProductService {
       const productsMap = new Map<string, Product>();
 
       rawRows.forEach((row, index) => {
-        // Find keys case-insensitively
         const getVal = (possibleKeys: string[]): string => {
           for (const key of Object.keys(row)) {
             const cleanKey = key.toLowerCase().trim();
@@ -385,18 +446,15 @@ export class ProductService {
           image = `assets/img/todas/${code}.webp`;
         }
 
-        // Infer base product name and size from rawProductName (e.g. "Creatina 300 gramos" -> name: "Creatina", size: "300g")
         let baseName = rawProductName;
         let size = 'Único';
 
-        // Check common sizes
         const sizeRegex = /\b(\d+(?:[.,]\d+)?\s*(?:kg|g|lbs|lb|caps|cápsulas|comprimidos|comp))\b/i;
         const sizeMatch = rawProductName.match(sizeRegex);
         if (sizeMatch) {
           size = sizeMatch[1].trim();
         }
 
-        // Clean flavor suffix from base name if present
         let cleanName = rawProductName;
         if (flavor && flavor !== 'Único') {
           const flavorRegex = new RegExp(`\\s*-\\s*${flavor}`, 'i');
@@ -443,7 +501,7 @@ export class ProductService {
       }
 
       this.saveAllProducts(importedProducts);
-      this.syncSuccessMessage.set(`¡Catálogo importado exitosamente desde Excel (.xlsx)! (${importedProducts.length} productos actualizados).`);
+      this.syncSuccessMessage.set(`¡Catálogo importado desde Excel y publicado para todos los usuarios! (${importedProducts.length} productos actualizados).`);
       return true;
     } catch (err: any) {
       this.syncError.set(`Error importando archivo Excel: ${err?.message || 'Formato no reconocido'}`);
